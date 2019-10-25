@@ -2,4 +2,8 @@ v0.0.1
 Implemented export_to_saved_model to export TensorFlow frozen graph to SavedModel.
 
 v0.0.2
-Fixed the deprecation warnings
+Fixed the deprecation warnings.
+
+v0.0.3
+Implemented infer_with_serving_client to make an inference with http request.
+Fixed the deprecation warnings.

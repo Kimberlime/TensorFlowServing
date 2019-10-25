@@ -5,8 +5,9 @@ from PIL import Image
 import random
 import colorsys
 import os
-from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import signature_constants
+import json
+import requests
 
 
 def read_class_names(class_file_name):
@@ -93,7 +94,7 @@ def bboxes_iou(boxes1, boxes2):
 
 def read_pb_return_tensors(graph, pb_file, return_elements):
     with tf.gfile.FastGFile(pb_file, 'rb') as f:
-        frozen_graph_def = tf.GraphDef()
+        frozen_graph_def = tf.compat.v1.GraphDef()
         frozen_graph_def.ParseFromString(f.read())
 
     with graph.as_default():
@@ -215,6 +216,38 @@ def export_to_saved_model(graph_path, export_path_base, version, return_elements
         print('Exported trained model to', export_path)
 
 
+def infer_with_frozen_graph(image_data, graph, pb_path, return_elements):
+    return_tensors = read_pb_return_tensors(graph, pb_path, return_elements)
+
+    with tf.compat.v1.Session(graph=graph) as sess:
+        pred_sbbox, pred_mbbox, pred_lbbox = sess.run(
+            [return_tensors[1], return_tensors[2], return_tensors[3]],
+            feed_dict={return_tensors[0]: image_data})
+
+    return pred_sbbox, pred_mbbox, pred_lbbox
+
+
+def infer_with_serving_client(image_data, url, return_elements):
+    """
+    Make a inference by a http request with image data and parse the json response to bounding box information.
+    :param image_data: numpy array of image data to make a prediction with
+    :param url: URL to send a request to
+    :param return_elements: input and output tensor name list
+    :return: information of small, medium, large bounding boxes
+    """
+    data = json.dumps({"signature_name": "serving_default", "instances": image_data.tolist()})
+
+    headers = {"content-type": "application/json"}
+    json_response = requests.post(url, data=data, headers=headers)
+    predictions = json.loads(json_response.text)['predictions'][0]
+
+    pred_sbbox = np.asarray(predictions[return_elements[1]])
+    pred_mbbox = np.asarray(predictions[return_elements[2]])
+    pred_lbbox = np.asarray(predictions[return_elements[3]])
+
+    return pred_sbbox, pred_mbbox, pred_lbbox
+
+
 if __name__ == '__main__':
     return_elements = ['input/input_data:0',
                        'pred_sbbox/concat_2:0',
@@ -235,16 +268,13 @@ if __name__ == '__main__':
     image_data = image_preprocess(np.copy(original_image), [input_size, input_size])
     image_data = image_data[np.newaxis, ...]
 
-    return_tensors = read_pb_return_tensors(graph, pb_file, return_elements)
+    # s_bboxes, m_bboxes, l_bboxes = pred_bbox = infer_with_frozen_graph(image_data, graph, pb_file, return_elements)
+    url = 'http://localhost:8501/v1/models/object_detection_model:predict'
+    s_bboxes, m_bboxes, l_bboxes = infer_with_serving_client(image_data, url, return_elements)
 
-    with tf.Session(graph=graph) as sess:
-        pred_sbbox, pred_mbbox, pred_lbbox = sess.run(
-            [return_tensors[1], return_tensors[2], return_tensors[3]],
-            feed_dict={return_tensors[0]: image_data})
-
-    pred_bbox = np.concatenate([np.reshape(pred_sbbox, (-1, 5 + num_classes)),
-                                np.reshape(pred_mbbox, (-1, 5 + num_classes)),
-                                np.reshape(pred_lbbox, (-1, 5 + num_classes))], axis=0)
+    pred_bbox = np.concatenate([np.reshape(s_bboxes, (-1, 5 + num_classes)),
+                                np.reshape(m_bboxes, (-1, 5 + num_classes)),
+                                np.reshape(l_bboxes, (-1, 5 + num_classes))], axis=0)
 
     bboxes = postprocess_boxes(pred_bbox, original_image_size, input_size, 0.3)
     bboxes = nms(bboxes, 0.45, method='nms')
