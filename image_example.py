@@ -175,45 +175,47 @@ def postprocess_boxes(pred_bbox, org_img_shape, input_size, score_threshold):
     return np.concatenate([coors, scores[:, np.newaxis], classes[:, np.newaxis]], axis=-1)
 
 
-def export_to_saved_model(graph_path, export_path_base, version):
+def export_to_saved_model(graph_path, export_path_base, version, return_elements):
     """
     Exports TensorFlow frozen graph to SavedModel file.
     :param graph_path: frozen graph path
     :param export_path_base: path to export graph to
-    :param version
+    :param version: model version
+    :param return_elements: input and output tensor name list
     """
     export_path = os.path.join(export_path_base, version)
-    print('Exporting trained model to', export_path)
 
-    builder = tf.saved_model.builder.SavedModelBuilder(export_path)
-    with tf.gfile.GFile(graph_path, 'rb') as f:
-        graph_def = tf.GraphDef()
+    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(export_path)
+    with tf.io.gfile.GFile(graph_path, 'rb') as f:
+        graph_def = tf.compat.v1.GraphDef()
         graph_def.ParseFromString(f.read())
 
-        with tf.Session(graph=tf.Graph()) as sess:
+        with tf.compat.v1.Session(graph=tf.Graph()) as sess:
             tf.import_graph_def(graph_def, name="")  # set name to an empty string to remove prefix
-            g = tf.get_default_graph()
-            inp = g.get_tensor_by_name('input/input_data:0')
-            out_s = g.get_tensor_by_name('pred_sbbox/concat_2:0')
-            out_m = g.get_tensor_by_name('pred_mbbox/concat_2:0')
-            out_l = g.get_tensor_by_name('pred_lbbox/concat_2:0')
-            signature = signature_def_utils.predict_signature_def(
-                inputs={"in": inp},
-                outputs={"out_s": out_s,
-                         'out_m': out_m,
-                         'out_l': out_l}
-            )
+            g = tf.compat.v1.get_default_graph()
+
+            input_tensor_info = tf.compat.v1.saved_model.build_tensor_info(g.get_tensor_by_name(return_elements[0]))
+            output_tensor_info_s = tf.saved_model.utils.build_tensor_info(g.get_tensor_by_name(return_elements[1]))
+            output_tensor_info_m = tf.compat.v1.saved_model.build_tensor_info(g.get_tensor_by_name(return_elements[2]))
+            output_tensor_info_l = tf.compat.v1.saved_model.build_tensor_info(g.get_tensor_by_name(return_elements[3]))
+
+            signature = tf.compat.v1.saved_model.signature_def_utils.build_signature_def(
+                inputs={return_elements[0]: input_tensor_info},
+                outputs={return_elements[1]: output_tensor_info_s,
+                         return_elements[2]: output_tensor_info_m,
+                         return_elements[3]: output_tensor_info_l},
+                method_name=tf.saved_model.PREDICT_METHOD_NAME)
+
             builder.add_meta_graph_and_variables(sess,
-                                                 [tf.saved_model.tag_constants.SERVING],
+                                                 [tf.saved_model.SERVING],
                                                  signature_def_map={
                                                      signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: signature})
 
         builder.save()
+        print('Exported trained model to', export_path)
 
 
 if __name__ == '__main__':
-    export_to_saved_model('detector_frozen.pb', './saved', '1')
-
     return_elements = ['input/input_data:0',
                        'pred_sbbox/concat_2:0',
                        'pred_mbbox/concat_2:0',
@@ -223,6 +225,8 @@ if __name__ == '__main__':
     num_classes = 80
     input_size = 416
     graph = tf.Graph()
+
+    export_to_saved_model('detector_frozen.pb', './object_detection_model', '1', return_elements)
 
     # Image
     original_image = cv2.imread(image_path)

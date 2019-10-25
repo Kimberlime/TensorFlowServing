@@ -1,2 +1,5 @@
 v0.0.1
 Implemented export_to_saved_model to export TensorFlow frozen graph to SavedModel.
+
+v0.0.2
+Fixed the deprecation warnings
