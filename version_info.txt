@@ -9,4 +9,9 @@ Implemented infer_with_serving_client to make an inference with http request.
 Fixed the deprecation warnings.
 
 v0.0.4
-Added required libraries to requirements.txt
+Added required libraries to requirements.txt.
+
+v0.0.5
+Put export function in a seperate file.
+Added shell script to do install requirements, pull a docker image, run the docker image, and do an inference.
+Added README file
