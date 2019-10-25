@@ -7,3 +7,6 @@ Fixed the deprecation warnings.
 v0.0.3
 Implemented infer_with_serving_client to make an inference with http request.
 Fixed the deprecation warnings.
+
+v0.0.4
+Added required libraries to requirements.txt
