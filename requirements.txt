@@ -1,5 +1,5 @@
 opencv-python==4.1.0.25
 numpy==1.15.1
-tensorflow==1.14.0
+tensorflow==1.15.0
 pillow
 requests
